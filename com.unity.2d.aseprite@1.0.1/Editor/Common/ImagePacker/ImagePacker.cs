@@ -9,6 +9,62 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace UnityEditor.U2D.Aseprite.Common
 {
+    public class PackedInputData
+    {
+        /// <summary>
+        /// Image buffers to pack
+        /// </summary>
+        public NativeArray<Color32>[] buffers;
+        /// <summary>
+        /// Image buffers width
+        /// </summary>
+        public int[] width;
+        /// <summary>
+        /// Image buffers height
+        /// </summary>
+        public int[] height;
+        /// <summary>
+        /// Padding between each packed image
+        /// </summary>
+        public int padding;
+        /// <summary>
+        /// Pack sprite expand size
+        /// </summary>
+        public uint spriteSizeExpand;
+        /// <summary>
+        /// Whether use canvas size
+        /// </summary>
+        public bool useCanvasSize;
+        /// <summary>
+        /// The canvas size
+        /// </summary>
+        public Vector2Int canvasSize;
+    }
+
+    public class PackedOutputData
+    {
+        /// <summary>
+        /// Packed image buffer
+        /// </summary>
+        public NativeArray<Color32> packedBuffer;
+        /// <summary>
+        /// Packed image buffer's width
+        /// </summary>
+        public int packedBufferWidth;
+        /// <summary>
+        /// Packed image buffer's height
+        /// </summary>
+        public int packedBufferHeight;
+        /// <summary>
+        /// Location of each image buffers in the packed buffer
+        /// </summary>
+        public RectInt[] packedRects;
+        /// <summary>
+        /// Translation data from image original buffer to packed buffer
+        /// </summary>
+        public Vector2Int[] uvTransforms;
+    }
+
     [BurstCompile]
     internal static class ImagePacker
     {
@@ -20,7 +76,7 @@ namespace UnityEditor.U2D.Aseprite.Common
         /// <param name="outPackedRects">Rects arranged within outPackedWidth and outPackedHeight</param>
         /// <param name="outPackedWidth">Width of the packed rects</param>
         /// <param name="outPackedHeight">Height of the packed rects</param>
-        public static void Pack(RectInt[] rects, int padding, out RectInt[] outPackedRects, out int outPackedWidth, out int outPackedHeight)
+        private static void Pack(RectInt[] rects, int padding, out RectInt[] outPackedRects, out int outPackedWidth, out int outPackedHeight)
         {
             var packNode = InternalPack(rects, padding);
             outPackedWidth = packNode.rect.width;
@@ -43,52 +99,69 @@ namespace UnityEditor.U2D.Aseprite.Common
         /// <summary>
         /// Packs image buffer into a single buffer. Image buffers are assumed to be 4 bytes per pixel in RGBA format
         /// </summary>
-        /// <param name="buffers">Image buffers to pack</param>
-        /// <param name="width">Image buffers width</param>
-        /// <param name="height">Image buffers height</param>
-        /// <param name="padding">Padding between each packed image</param>
-        /// <param name="spriteSizeExpand">Pack sprite expand size</param>
-        /// <param name="outPackedBuffer">Packed image buffer</param>
-        /// <param name="outPackedBufferWidth">Packed image buffer's width</param>
-        /// <param name="outPackedBufferHeight">Packed image buffer's height</param>
-        /// <param name="outPackedRect">Location of each image buffers in the packed buffer</param>
-        /// <param name="outUVTransform">Translation data from image original buffer to packed buffer</param>
-        public static void Pack(NativeArray<Color32>[] buffers, int[] width, int[] height, int padding, uint spriteSizeExpand, out NativeArray<Color32> outPackedBuffer, out int outPackedBufferWidth, out int outPackedBufferHeight, out RectInt[] outPackedRect, out Vector2Int[] outUVTransform)
+        /// <param name="inputData">Packed input data</param>
+        /// <param name="outputData">Packed output data</param>
+        public static void Pack(PackedInputData inputData, out PackedOutputData outputData)
         {
             UnityEngine.Profiling.Profiler.BeginSample("Pack");
+
+            outputData = new PackedOutputData();
             // Determine the area that contains data in the buffer
-            outPackedBuffer = default(NativeArray<Color32>);
+            outputData.packedBuffer = default;
+
             try
             {
-                var tightRects = FindTightRectJob.Execute(buffers, width, height);
+                RectInt[] tightRects;
+
+                if (inputData.useCanvasSize)
+                {
+                    tightRects = new RectInt[inputData.buffers.Length];
+                    for (int i = 0; i < inputData.buffers.Length; i++)
+                    {
+                        tightRects[i] = new RectInt(Vector2Int.zero, inputData.canvasSize);
+                    }
+                }
+                else
+                {
+                   tightRects = FindTightRectJob.Execute(inputData.buffers, inputData.width, inputData.height);
+                }
+
                 var tightRectArea = new RectInt[tightRects.Length];
+
                 for (var i = 0; i < tightRects.Length; ++i)
                 {
                     var t = tightRects[i];
-                    t.width = tightRects[i].width + (int)spriteSizeExpand;
-                    t.height = tightRects[i].height + (int)spriteSizeExpand;
+                    t.width = tightRects[i].width + (int)inputData.spriteSizeExpand;
+                    t.height = tightRects[i].height + (int)inputData.spriteSizeExpand;
                     tightRectArea[i] = t;
                 }
-                Pack(tightRectArea, padding, out outPackedRect, out outPackedBufferWidth, out outPackedBufferHeight);
+
+                Pack(tightRectArea, inputData.padding, out var outPackedRect, out int outPackedBufferWidth, out int outPackedBufferHeight);
+
+                outputData.packedRects = outPackedRect;
+                outputData.packedBufferWidth = outPackedBufferWidth;
+                outputData.packedBufferHeight = outPackedBufferHeight;
+
                 var packBufferSize = (ulong)outPackedBufferWidth * (ulong)outPackedBufferHeight;
 
-                if (packBufferSize < 0 || packBufferSize >= int.MaxValue)
+                if (packBufferSize >= int.MaxValue)
                 {
                     throw new ArgumentException("Unable to create pack texture. Image size is too big to pack.");
                 }
-                outUVTransform = new Vector2Int[tightRectArea.Length];
-                for (var i = 0; i < outUVTransform.Length; ++i)
-                {
-                    outUVTransform[i] = new Vector2Int(outPackedRect[i].x - tightRects[i].x, outPackedRect[i].y - tightRects[i].y);
-                }
-                outPackedBuffer = new NativeArray<Color32>(outPackedBufferWidth * outPackedBufferHeight, Allocator.Persistent);
 
-                Blit(outPackedBuffer, outPackedRect, outPackedBufferWidth, buffers, tightRects, width, padding);
+                outputData.uvTransforms = new Vector2Int[tightRectArea.Length];
+                for (var i = 0; i < outputData.uvTransforms.Length; ++i)
+                {
+                    outputData.uvTransforms[i] = new Vector2Int(outPackedRect[i].x - tightRects[i].x, outPackedRect[i].y - tightRects[i].y);
+                }
+                outputData.packedBuffer = new NativeArray<Color32>(outPackedBufferWidth * outPackedBufferHeight, Allocator.Persistent);
+
+                Blit(outputData.packedBuffer, outPackedRect, outPackedBufferWidth, inputData.buffers, tightRects, inputData.width);
             }
             catch (Exception ex)
             {
-                if (outPackedBuffer.IsCreated)
-                    outPackedBuffer.Dispose();
+                if (outputData.packedBuffer.IsCreated)
+                    outputData.packedBuffer.Dispose();
                 throw ex;
             }
             finally
@@ -135,7 +208,7 @@ namespace UnityEditor.U2D.Aseprite.Common
             return root;
         }
         
-        public static void Blit(NativeArray<Color32> buffer, RectInt[] blitToArea, int bufferBytesPerRow, NativeArray<Color32>[] originalBuffer, RectInt[] blitFromArea, int[] bytesPerRow, int padding)
+        public static void Blit(NativeArray<Color32> buffer, RectInt[] blitToArea, int bufferBytesPerRow, NativeArray<Color32>[] originalBuffer, RectInt[] blitFromArea, int[] bytesPerRow)
         {
             UnityEngine.Profiling.Profiler.BeginSample("Blit");
             

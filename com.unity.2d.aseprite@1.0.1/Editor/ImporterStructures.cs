@@ -195,4 +195,19 @@ namespace UnityEditor.U2D.Aseprite
         /// </summary>
         Local
     }
+
+    /// <summary>
+    /// The size of cells are being calculated.
+    /// </summary>
+    public enum CellSizeModes
+    {
+        /// <summary>
+        /// Fit the frame size itself.
+        /// </summary>
+        FitFrame,
+        /// <summary>
+        /// The canvas size.
+        /// </summary>
+        CanvasSize
+    }
 }

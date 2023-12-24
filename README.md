@@ -30,6 +30,10 @@ Select `Canvas Size` option and you will get correct frame size:
 
 ![](Images/Custom-Version.png)
 
+The imported animations are now pretty reductive and vivid:
+
+<img src="Images/GIF-Criminal-Final.gif" style="zoom:80%;" />
+
 ## How To Use
 
 1. Clone this repository, copy folder `com.unity.2d.aseprite@1.0.1` to folder `<YourUnityProjectRoot>/Packages`.

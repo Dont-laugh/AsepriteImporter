@@ -203,27 +203,41 @@ namespace UnityEditor.U2D.Aseprite
                     m_AsepriteLayers = UpdateLayers(in newLayers, in m_AsepriteLayers);
                 }
 
-                var padding = 4;
-                var spritePadding = m_AsepriteImporterSettings.fileImportMode == FileImportModes.AnimatedSprite ? m_AsepriteImporterSettings.spritePadding : 0;
-                ImagePacker.Pack(cellBuffers.ToArray(), cellWidth.ToArray(), cellHeight.ToArray(), padding, spritePadding, out var outputImageBuffer, out var packedTextureWidth, out var packedTextureHeight, out var spriteRects, out var uvTransforms);
-                
-                var packOffsets = new Vector2Int[spriteRects.Length];
+                if (cellSizeMode == CellSizeModes.CanvasSize)
+                {
+                    PaddingToCanvas(m_AsepriteLayers[0].cells.Select(c => c.cellRect.min).ToArray(), cellBuffers, cellWidth, cellHeight, m_CanvasSize);
+                }
+
+                var packedInputData = new PackedInputData
+                {
+                    padding = 2,
+                    buffers = cellBuffers.ToArray(),
+                    width = cellWidth.ToArray(),
+                    height = cellHeight.ToArray(),
+                    spriteSizeExpand = m_AsepriteImporterSettings.fileImportMode == FileImportModes.AnimatedSprite ? m_AsepriteImporterSettings.spritePadding : 0,
+                    useCanvasSize = cellSizeMode == CellSizeModes.CanvasSize,
+                    canvasSize = m_CanvasSize,
+                };
+
+                ImagePacker.Pack(packedInputData, out PackedOutputData packedOutputData);
+
+                var packOffsets = new Vector2Int[packedOutputData.packedRects.Length];
                 for (var i = 0; i < packOffsets.Length; ++i)
                 {
-                    packOffsets[i] = new Vector2Int(uvTransforms[i].x - spriteRects[i].position.x, uvTransforms[i].y - spriteRects[i].position.y);
+                    packOffsets[i] = new Vector2Int(packedOutputData.uvTransforms[i].x - packedOutputData.packedRects[i].position.x, packedOutputData.uvTransforms[i].y - packedOutputData.packedRects[i].position.y);
                     packOffsets[i] *= -1;
                 }
 
-                var spriteImportData = UpdateSpriteImportData(in m_AsepriteLayers, spriteRects, packOffsets, uvTransforms);
+                var spriteImportData = UpdateSpriteImportData(in m_AsepriteLayers, packedOutputData.packedRects, packOffsets, packedOutputData.uvTransforms);
 
-                importData.importedTextureHeight = textureActualHeight = packedTextureHeight;
-                importData.importedTextureWidth = textureActualWidth = packedTextureWidth;
-                
+                importData.importedTextureHeight = textureActualHeight = packedOutputData.packedBufferHeight;
+                importData.importedTextureWidth = textureActualWidth = packedOutputData.packedBufferWidth;
+
                 var output = TextureGeneration.Generate(
-                    ctx, 
-                    outputImageBuffer, 
-                    packedTextureWidth, 
-                    packedTextureHeight, 
+                    ctx,
+                    packedOutputData.packedBuffer,
+                    packedOutputData.packedBufferWidth,
+                    packedOutputData.packedBufferHeight,
                     spriteImportData.ToArray(),
                     in m_PlatformSettings,
                     in m_TextureImporterSettings,
@@ -238,8 +252,8 @@ namespace UnityEditor.U2D.Aseprite
 
                 RegisterAssets(ctx, output);
                 OnPostAsepriteImport?.Invoke(new ImportEventArgs(this, ctx));
-                
-                outputImageBuffer.DisposeIfCreated();
+
+                packedOutputData.packedBuffer.DisposeIfCreated();
                 foreach (var cellBuffer in cellBuffers)
                     cellBuffer.DisposeIfCreated();
             }
@@ -253,6 +267,43 @@ namespace UnityEditor.U2D.Aseprite
                 EditorUtility.SetDirty(this);
                 m_AsepriteFile?.Dispose();
             }
+        }
+
+        static void PaddingToCanvas(Vector2Int[] offset, IList<NativeArray<Color32>> buffers, IList<int> width, IList<int> height, Vector2Int canvasSize)
+        {
+            UnityEngine.Profiling.Profiler.BeginSample("PaddingToCanvas");
+
+            for (int i = 0; i < buffers.Count; i++)
+            {
+                var oldBuffer = buffers[i];
+                int oldWidth = width[i];
+                int oldHeight = height[i];
+                int offsetX = offset[i].x;
+                int offsetY = offset[i].y;
+
+                var newBuffer = new NativeArray<Color32>(canvasSize.x * canvasSize.y, Allocator.Persistent);
+
+                for (int y = 0; y < canvasSize.y; ++y)
+                {
+                    for (int x = 0; x < canvasSize.x; ++x)
+                    {
+                        if (offsetX <= x && x < oldWidth + offsetX && offsetY <= y && y < oldHeight + offsetY)
+                        {
+                            newBuffer[y * canvasSize.x + x] = oldBuffer[(y - offsetY) * oldWidth + x - offsetX];
+                        }
+                        else
+                        {
+                            newBuffer[y * canvasSize.x + x] = new Color32();
+                        }
+                    }
+                }
+
+                buffers[i] = newBuffer;
+                width[i] = canvasSize.x;
+                height[i] = canvasSize.y;
+            }
+
+            UnityEngine.Profiling.Profiler.EndSample();
         }
 
         List<Layer> RestructureImportData(in AsepriteFile file)

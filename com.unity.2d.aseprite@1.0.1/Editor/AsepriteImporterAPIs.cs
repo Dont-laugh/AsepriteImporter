@@ -124,6 +124,15 @@ namespace UnityEditor.U2D.Aseprite
         }
 
         /// <summary>
+        /// The size of cells are being calculated.
+        /// </summary>
+        public CellSizeModes cellSizeMode
+        {
+            get => m_AsepriteImporterSettings.cellSizeMode;
+            set => m_AsepriteImporterSettings.cellSizeMode = value;
+        }
+
+        /// <summary>
         /// The space the Sprite pivots are being calculated.
         /// </summary>
         public PivotSpaces pivotSpace

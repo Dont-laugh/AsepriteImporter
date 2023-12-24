@@ -27,6 +27,13 @@ namespace UnityEditor.U2D.Aseprite
             set => m_LayerImportMode = value;
         }
 
+        [SerializeField] CellSizeModes m_CellSizeMode;
+        public CellSizeModes cellSizeMode
+        {
+            get => m_CellSizeMode;
+            set => m_CellSizeMode = value;
+        }
+
         [SerializeField] PivotSpaces m_DefaultPivotSpace;
         public PivotSpaces defaultPivotSpace
         {
@@ -87,6 +94,7 @@ namespace UnityEditor.U2D.Aseprite
         {
             return !m_ImportHiddenLayers &&
                    m_LayerImportMode == 0 &&
+                   m_CellSizeMode == 0 &&
                    m_DefaultPivotSpace == 0 &&
                    m_DefaultPivotAlignment == 0 &&
                    !m_GenerateModelPrefab &&

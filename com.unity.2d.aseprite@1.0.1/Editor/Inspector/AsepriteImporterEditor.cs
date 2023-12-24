@@ -56,6 +56,7 @@ namespace UnityEditor.U2D.Aseprite
         SerializedProperty m_FileImportMode;
         SerializedProperty m_ImportHiddenLayers;
         SerializedProperty m_LayerImportMode;
+        SerializedProperty m_CellSizeMode;
         SerializedProperty m_DefaultPivotSpace;
         SerializedProperty m_DefaultPivotAlignment;
         SerializedProperty m_CustomPivotPosition;
@@ -165,6 +166,7 @@ namespace UnityEditor.U2D.Aseprite
             m_FileImportMode = asepriteImporterSettings.FindPropertyRelative("m_FileImportMode");
             m_ImportHiddenLayers = asepriteImporterSettings.FindPropertyRelative("m_ImportHiddenLayers");
             m_LayerImportMode = asepriteImporterSettings.FindPropertyRelative("m_LayerImportMode");
+            m_CellSizeMode = asepriteImporterSettings.FindPropertyRelative("m_CellSizeMode");
             m_DefaultPivotSpace = asepriteImporterSettings.FindPropertyRelative("m_DefaultPivotSpace");
             m_DefaultPivotAlignment = asepriteImporterSettings.FindPropertyRelative("m_DefaultPivotAlignment");
             m_CustomPivotPosition = asepriteImporterSettings.FindPropertyRelative("m_CustomPivotPosition");
@@ -347,6 +349,19 @@ namespace UnityEditor.U2D.Aseprite
             });
             layerModePopup.AddToClassList(k_BaseFieldAlignedUssClass);
             foldOut.Add(layerModePopup);
+
+            var cellSizePopup = new PopupField<string>(s_Styles.cellSizeOptions, m_CellSizeMode.intValue)
+            {
+                label = s_Styles.cellSizeMode.text,
+                tooltip = s_Styles.cellSizeMode.tooltip
+            };
+            cellSizePopup.RegisterValueChangedCallback(_ =>
+            {
+                m_CellSizeMode.intValue = cellSizePopup.index;
+                serializedObject.ApplyModifiedProperties();
+            });
+            cellSizePopup.AddToClassList(k_BaseFieldAlignedUssClass);
+            foldOut.Add(cellSizePopup);
 
             var pivotSpaceField = new PropertyField(m_DefaultPivotSpace, styles.defaultPivotSpace.text)
             {
@@ -1485,6 +1500,13 @@ namespace UnityEditor.U2D.Aseprite
             {
                 L10n.Tr("Individual Layers"),
                 L10n.Tr("Merge Frame")
+            };
+
+            public readonly GUIContent cellSizeMode = EditorGUIUtility.TrTextContent("Cell Size Mode", "Should cells use size of themselves or the canvas.");
+            public readonly List<string> cellSizeOptions = new()
+            {
+                L10n.Tr("Fit Frame"),
+                L10n.Tr("Canvas Size")
             };
 
             public readonly GUIContent generateModelPrefab = EditorGUIUtility.TrTextContent("Model Prefab", "Generate a Model Prefab laid out the same way as inside Aseprite.");
